@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Shadow Escape: Asymmetric Survival</title>
+    <style>
+        * { box-sizing: border-box; user-select: none; margin: 0; padding: 0; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #050505; font-family: sans-serif; color: #fff; }
+        #game-container { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        canvas { display: block; box-shadow: 0 0 20px rgba(0,0,0,0.8); background: #111; }
+        .ui-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(5, 5, 5, 0.85); backdrop-filter: blur(8px); }
+        .hidden { display: none !important; }
+        h1 { font-size: 2.5rem; color: #ff3333; text-transform: uppercase; letter-spacing: 4px; margin-bottom: 20px; text-shadow: 0 0 10px rgba(255,51,51,0.6); }
+        .menu-panel { background: rgba(20, 20, 20, 0.9); border: 2px solid #333; padding: 25px; border-radius: 8px; width: 90%; max-width: 500px; text-align: center; }
+        .btn { display: block; width: 100%; padding: 12px; margin: 10px 0; background: #222; border: 1px solid #444; color: #fff; font-size: 1.1rem; cursor: pointer; border-radius: 4px; transition: all 0.2s; text-transform: uppercase; }
+        .btn:hover { background: #ff3333; border-color: #ff6666; color: #000; font-weight: bold; }
+        .btn-sec { background: #333; }
+        .btn-sec:hover { background: #555; color: #fff; border-color: #777; }
+        .stats-grid, .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; text-align: left; }
+        .stat-box, .shop-item { background: #151515; padding: 10px; border: 1px solid #222; border-radius: 4px; }
+        .shop-item { display: flex; flex-direction: column; justify-content: space-between; }
+        .currency-display { font-size: 1.2rem; color: #ffd700; margin-bottom: 10px; font-weight: bold; }
+        #hud { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; padding: 15px; display: flex; flex-direction: column; justify-content: space-between; }
+        .hud-top { display: flex; justify-content: space-between; width: 100%; }
+        .hud-panel { background: rgba(10, 10, 10, 0.75); padding: 10px 15px; border-radius: 4px; border: 1px solid #222; font-family: monospace; font-size: 1.1rem; }
+        .hud-bottom { display: flex; justify-content: space-between; align-items: flex-end; width: 100%; }
+        .status-bars { width: 220px; }
+        .bar-container { width: 100%; background: #333; height: 14px; border-radius: 7px; margin-top: 5px; overflow: hidden; border: 1px solid #444; }
+        .bar-fill { height: 100%; width: 100%; transition: width 0.1s ease; }
+        #hp-fill { background: #ff3333; }
+        #stamina-fill { background: #33cc33; }
+        #ability-fill { background: #3399ff; }
+        .alert-log { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); width: 80%; max-width: 400px; text-align: center; pointer-events: none; }
+        .alert-msg { background: rgba(255, 0, 0, 0.2); border: 1px solid rgba(255, 0, 0, 0.5); color: #ff9999; padding: 6px 12px; margin: 4px 0; border-radius: 4px; font-size: 0.9rem; animation: fInOut 3s forwards; }
+        @keyframes fInOut { 0% { opacity:0; transform:translateY(-10px); } 10%, 80% { opacity:1; transform:translateY(0); } 100% { opacity:0; transform:translateY(10px); } }
+        #mobile-controls { position: absolute; bottom: 20px; left: 20px; right: 20px; display: none; justify-content: space-between; pointer-events: none; z-index: 6; }
+        .joystick-zone { width: 110px; height: 110px; background: rgba(255,255,255,0.1); border-radius: 50%; position: relative; pointer-events: auto; }
+        .joystick-knob { width: 45px; height: 45px; background: rgba(255,255,255,0.3); border-radius: 50%; position: absolute; left: 32px; top: 32px; }
+        .action-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; pointer-events: auto; }
+        .m-btn { width: 55px; height: 55px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; color: white; font-weight: bold; display: flex; justify-content: center; align-items: center; font-size: 0.75rem; }
+        @media (max-width: 768px) { #mobile-controls { display: flex; } h1 { font-size: 1.8rem; } }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="hud" class="hidden">
+        <div class="hud-top">
+            <div class="hud-panel" id="hud-match-info">MÁQUINAS: 0/4 | VIVOS: 8</div>
+            <div class="hud-panel" id="hud-timer">TEMPO: 05:00</div>
+        </div>
+        <div class="alert-log" id="alert-log"></div>
+        <div class="hud-bottom">
+            <div class="status-bars">
+                <div>VIDA <div class="bar-container"><div id="hp-fill" class="bar-fill"></div></div></div>
+                <div style="margin-top:5px;">ENERGIA <div class="bar-container"><div id="stamina-fill" class="bar-fill"></div></div></div>
+                <div style="margin-top:5px;">HABILIDADE [E] <div class="bar-container"><div id="ability-fill" class="bar-fill"></div></div></div>
+            </div>
+            <div class="hud-panel" id="hud-role" style="color: #3399ff;">SOBREVIVENTE</div>
+        </div>
+    </div>
+
+    <div id="mobile-controls">
+        <div class="joystick-zone" id="touch-joy"><div class="joystick-knob" id="touch-knob"></div></div>
+        <div class="action-btns">
+            <div class="m-btn" id="btn-run">CORRE</div>
+            <div class="m-btn" id="btn-crouch">AGACHA</div>
+            <div class="m-btn" id="btn-interact">INTERAG</div>
+            <div class="m-btn" id="btn-skill">HABIL.</div>
+        </div>
+    </div>
+
+    <div id="menu-main" class="ui-screen">
+        <h1>SHADOW ESCAPE</h1>
+        <div class="menu-panel">
+            <div class="currency-display">MOEDAS: <span id="menu-coins">0</span> | NV: <span id="menu-level">1</span> (<span id="menu-xp">0</span> XP)</div>
+            <button class="btn" id="btn-play-surv">Jogar como Sobrevivente</button>
+            <button class="btn" id="btn-play-hunt" style="border-color: #ff3333;">Jogar como Caçador</button>
+            <button class="btn btn-sec" id="btn-open-shop">Loja & Personagens</button>
+            <button class="btn btn-sec" id="btn-open-stats">Estatísticas</button>
+        </div>
+    </div>
+
+    <div id="menu-shop" class="ui-screen hidden">
+        <h1>LOJA & SELEÇÃO</h1>
+        <div class="menu-panel" style="max-width: 600px;">
+            <div class="currency-display">SUAS MOEDAS: <span id="shop-coins">0</span></div>
+            <div class="shop-grid" id="shop-items-container"></div>
+            <button class="btn btn-sec" id="btn-close-shop">Voltar</button>
+        </div>
+    </div>
+
+    <div id="menu-stats" class="ui-screen hidden">
+        <h1>ESTATÍSTICAS</h1>
+        <div class="menu-panel">
+            <div class="stats-grid">
+                <div class="stat-box">Partidas: <span id="st-matches">0</span></div>
+                <div class="stat-box">Vitórias: <span id="st-wins">0</span></div>
+                <div class="stat-box">Fugas: <span id="st-escapes">0</span></div>
+                <div class="stat-box">Abates: <span id="st-kills">0</span></div>
+            </div>
+            <button class="btn btn-sec" id="btn-close-stats">Voltar</button>
+        </div>
+    </div>
+
+    <div id="menu-end" class="ui-screen hidden">
+        <h1 id="end-title">VITÓRIA</h1>
+        <div class="menu-panel">
+            <p id="end-reason" style="margin-bottom: 15px; font-size: 1.2rem;"></p>
+            <div class="stat-box" style="margin-bottom: 20px; text-align: center;">
+                +<span id="end-xp">0</span> XP <br> +<span id="end-coins">0</span> Moedas
+            </div>
+            <button class="btn" id="btn-end-return">Voltar ao Menu</button>
+        </div>
+    </div>
+</div>
+<script>
+// CONTROLE DE ÁUDIO SEGURO CONTRA BLOQUEIOS
+const AudioSynth = {
+    ctx: null,
+    init() {
+        try {
+            if (!this.ctx) {
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        } catch (e) {
+            console.warn("Áudio não suportado.", e);
+        }
+    },
+    play(type) {
+        try {
+            this.init();
+            if (!this.ctx) return;
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+            
+            let osc = this.ctx.createOscillator();
+            let gain = this.ctx.createGain();
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            let now = this.ctx.currentTime;
+            
+            if (type === 'step') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(60, now);
+                gain.gain.setValueAtTime(0.08, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'run') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(90, now);
+                gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                osc.start(now); osc.stop(now + 0.08);
+            } else if (type === 'hit') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(120, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.2);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now); osc.stop(now + 0.2);
+            } else if (type === 'mach') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(200 + Math.random() * 50, now);
+                gain.gain.setValueAtTime(0.04, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'win') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(440, now);
+                osc.frequency.setValueAtTime(554, now + 0.1); osc.frequency.setValueAtTime(659, now + 0.2);
+                gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5);
+            } else if (type === 'lose') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(70, now + 0.5);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5);
+            } else if (type === 'click') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(600, now);
+                gain.gain.setValueAtTime(0.08, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                osc.start(now); osc.stop(now + 0.05);
+            }
+        } catch (err) {
+            console.error("Erro áudio:", err);
+        }
+    }
+};
+
+const Config = { canvasWidth: 1024, canvasHeight: 576, tileSize: 64, mapTilesX: 40, mapTilesY: 40, matchDuration: 300 };
+
+let Profile = {
+    coins: 100, level: 1, xp: 0,
+    unlocked: ['Aria', 'Vanguard'], selectedSurv: 'Aria', selectedHunt: 'Vanguard',
+    stats: { matches: 0, wins: 0, escapes: 0, kills: 0 }
+};
+
+if (localStorage.getItem('shadow_escape_save_v2')) {
+    try { Profile = JSON.parse(localStorage.getItem('shadow_escape_save_v2')); } catch(e) {}
+}
+function saveProfile() { localStorage.setItem('shadow_escape_save_v2', JSON.stringify(Profile)); }
+
+const Characters = {
+    'Aria': { name: 'Aria (Furtiva)', role: 'surv', hp: 100, speed: 4.2, lore: 'Especialista em infiltrações silenciosas.', special: 'Invisibilidade (4s)', cooldown: 15, cost: 0 },
+    'Beck': { name: 'Beck (Técnico)', role: 'surv', hp: 100, speed: 3.8, lore: 'Engenheiro capaz de reprogramar reatores rapidamente.', special: 'Super Sobrecarga', cooldown: 20, cost: 50 },
+    'Clara': { name: 'Clara (Médica)', role: 'surv', hp: 120, speed: 4.0, lore: 'Médica de combate focada em resgates táticos.', special: 'Kit Adrenalina (+30 HP)', cooldown: 18, cost: 80 },
+    'Vanguard': { name: 'Vanguard', role: 'hunt', hp: 200, speed: 4.6, lore: 'Ciborgue tático experimental.', special: 'Investida Devastadora', cooldown: 10, cost: 0 },
+    'Specter': { name: 'Specter', role: 'hunt', hp: 150, speed: 4.8, lore: 'Entidade espectral que caça no escuro.', special: 'Teletransporte', cooldown: 25, cost: 100 }
+};
+
+class Vector2 {
+    constructor(x=0, y=0) { this.x = x; this.y = y; }
+    set(x, y) { this.x = x; this.y = y; return this; }
+    clone() { return new Vector2(this.x, this.y); }
+    len() { return Math.sqrt(this.x*this.x + this.y*this.y); }
+    norm() { let l = this.len(); if(l>0){this.x/=l; this.y/=l;} return this; }
+    dist(v) { return Math.sqrt((this.x-v.x)**2 + (this.y-v.y)**2); }
+}
+
+class MapData {
+    constructor() {
+        this.w = Config.mapTilesX; this.h = Config.mapTilesY; this.ts = Config.tileSize;
+        this.grid = Array(this.w * this.h).fill(0);
+        this.rooms = []; this.generators = []; this.hidingSpots = [];
+        this.escapeGate = new Vector2(0,0);
+        this.generate();
+    }
+    getTile(tx, ty) {
+        if (tx < 0 || tx >= this.w || ty < 0 || ty >= this.h) return 1;
+        return this.grid[ty * this.w + tx];
+    }
+    generate() {
+        this.grid.fill(1);
+        let roomTypes = ['Hospital', 'Escola', 'Armazém', 'Ruínas', 'Casas', 'Mansão'];
+        for (let i = 0; i < 8; i++) {
+            let rw = Math.floor(Math.random() * 5) + 5, rh = Math.floor(Math.random() * 5) + 5;
+            let rx = Math.floor(Math.random() * (this.w - rw - 4)) + 2, ry = Math.floor(Math.random() * (this.h - rh - 4)) + 2;
+            for (let y = ry; y < ry + rh; y++) {
+                for (let x = rx; x < rx + rw; x++) this.grid[y * this.w + x] = 0;
+            }
+            this.rooms.push({ x: rx, y: ry, w: rw, h: rh, type: roomTypes[i % roomTypes.length] });
+        }
+        for (let i = 0; i < this.rooms.length - 1; i++) {
+            let r1 = this.rooms[i], r2 = this.rooms[i+1];
+            let cx1 = Math.floor(r1.x + r1.w/2), cy1 = Math.floor(r1.y + r1.h/2);
+            let cx2 = Math.floor(r2.x + r2.w/2), cy2 = Math.floor(r2.y + r2.h/2);
+            for (let x = Math.min(cx1, cx2); x <= Math.max(cx1, cx2); x++) this.grid[cy1 * this.w + x] = 0;
+            for (let y = Math.min(cy1, cy2); y <= Math.max(cy1, cy2); y++) this.grid[y * this.w + cx2] = 0;
+        }
+        this.rooms.forEach((room, idx) => {
+            if (idx < 5) {
+                let gx = Math.floor(room.x + room.w / 2) * this.ts + this.ts/2;
+                let gy = Math.floor(room.y + room.h / 2) * this.ts + this.ts/2;
+                this.generators.push({ pos: new Vector2(gx, gy), progress: 0, done: false });
+            }
+            this.hidingSpots.push(new Vector2(Math.floor(room.x + 1)*this.ts + this.ts/2, Math.floor(room.y + 1)*this.ts + this.ts/2));
+        });
+        let gateX = Math.floor(this.w / 2);
+        for(let y = 0; y < 4; y++) this.grid[y * this.w + gateX] = 0;
+        this.escapeGate.set(gateX * this.ts + this.ts/2, 2 * this.ts);
+    }
+    checkCollision(pos, radius) {
+        let buf = radius;
+        let pts = [new Vector2(pos.x - buf, pos.y - buf), new Vector2(pos.x + buf, pos.y - buf), new Vector2(pos.x - buf, pos.y + buf), new Vector2(pos.x + buf, pos.y + buf)];
+        for (let pt of pts) {
+            if (this.getTile(Math.floor(pt.x / this.ts), Math.floor(pt.y / this.ts)) === 1) return true;
+        }
+        return false;
+    }
+}
+class Agent {
+    constructor(id, name, type, isBot, startPos) {
+        this.id = id; this.name = name; this.type = type; this.isBot = isBot;
+        let stats = Characters[name] || Characters['Aria'];
+        this.speedAttr = stats.speed; this.maxHp = stats.hp; this.hp = this.maxHp;
+        this.pos = startPos.clone(); this.dir = new Vector2(0, 1);
+        this.stamina = 100; this.isCrouching = false; this.isRunning = false;
+        this.isHidden = false; this.isDowned = false;
+        this.skillCooldown = 0; this.skillActiveTimer = 0;
+        this.aiState = 'patrol'; this.aiTarget = null; this.aiTimer = 0; this.soundAlertPos = null;
+    }
+    getSpeed() {
+        if (this.isDowned) return 0.6;
+        let base = this.speedAttr;
+        if (this.isRunning && this.stamina > 0) base *= 1.4;
+        if (this.isCrouching) base *= 0.5;
+        if (this.skillActiveTimer > 0 && this.type === 'hunt') base *= 1.5;
+        return base;
+    }
+    update(map, match) {
+        if (this.skillCooldown > 0) this.skillCooldown -= 1/60;
+        if (this.skillActiveTimer > 0) this.skillActiveTimer -= 1/60;
+        if (this.isRunning && this.stamina > 0 && !this.isCrouching && (this.dir.x !== 0 || this.dir.y !== 0)) {
+            this.stamina -= 0.25;
+            if(Math.random() < 0.15) AudioSynth.play(this.isBot ? 'mach' : 'run');
+        } else {
+            if (this.stamina < 100) this.stamina += 0.15;
+        }
+        if (this.stamina <= 0) this.isRunning = false;
+        if (this.isBot) this.updateAI(map, match);
+    }
+    updateAI(map, match) {
+        this.aiTimer -= 1/60;
+        if (this.type === 'hunt') {
+            let targetSurv = null, minDist = 350;
+            match.agents.forEach(a => {
+                if (a.type === 'surv' && !a.isDowned && !a.isHidden && (a.name !== 'Aria' || a.skillActiveTimer <= 0)) {
+                    let d = this.pos.dist(a.pos);
+                    if (d < minDist) { minDist = d; targetSurv = a; }
+                }
+            });
+            if (targetSurv) {
+                this.aiState = 'chase'; this.aiTarget = targetSurv.pos.clone();
+                if (this.skillCooldown <= 0 && minDist < 200 && Math.random() < 0.05) {
+                    this.skillCooldown = Characters[this.name].cooldown; this.skillActiveTimer = 3;
+                    match.addAlert("Caçador utilizou investida fúria!");
+                }
+                if (minDist < 45 && this.aiTimer <= 0) {
+                    targetSurv.takeDamage(45, match); AudioSynth.play('hit'); this.aiTimer = 1.2;
+                }
+            } else if (this.soundAlertPos) {
+                this.aiState = 'investigate'; this.aiTarget = this.soundAlertPos;
+                if (this.pos.dist(this.soundAlertPos) < 40) this.soundAlertPos = null;
+            } else if (this.aiState !== 'patrol' || this.aiTimer <= 0 || !this.aiTarget) {
+                this.aiState = 'patrol'; this.aiTimer = Math.random() * 5 + 3;
+                this.aiTarget = match.map.generators[Math.floor(Math.random() * match.map.generators.length)].pos.clone();
+            }
+        } else {
+            if (this.isDowned) { this.aiState = 'downed'; this.aiTarget = null; return; }
+            let hunter = match.agents.find(a => a.type === 'hunt');
+            if (hunter && this.pos.dist(hunter.pos) < 250 && (hunter.name !== 'Aria' || hunter.skillActiveTimer <= 0)) {
+                this.aiState = 'flee'; this.isRunning = true;
+                let escDir = new Vector2(this.pos.x - hunter.pos.x, this.pos.y - hunter.pos.y).norm();
+                this.aiTarget = new Vector2(this.pos.x + escDir.x * 150, this.pos.y + escDir.y * 150);
+            } else if (this.aiState === 'flee' || this.aiState === 'patrol' || !this.aiTarget) {
+                let g = match.map.generators.find(g => !g.done);
+                if (g) { this.aiState = 'repair'; this.aiTarget = g.pos.clone(); }
+                else { this.aiState = 'escape'; this.aiTarget = match.map.escapeGate.clone(); }
+            }
+            if (this.aiTarget) {
+                let d = this.pos.dist(this.aiTarget);
+                if (this.aiState === 'repair' && d < 50) {
+                    let g = match.map.generators.find(g => g.pos.dist(this.pos) < 60);
+                    if (g && !g.done) {
+                        g.progress += 0.08 * (this.name === 'Beck' ? 1.35 : 1.0);
+                        if(Math.random() < 0.05) AudioSynth.play('mach');
+                        if (g.progress >= 100) { g.done = true; match.addAlert("Um gerador foi reparado!"); }
+                    }
+                }
+                if (this.aiState === 'escape' && d < 60 && match.isGateOpen()) match.escapeSurvivor(this);
+            }
+        }
+        if (this.aiTarget) {
+            let mDir = new Vector2(this.aiTarget.x - this.pos.x, this.aiTarget.y - this.pos.y);
+            if (mDir.len() > 5) {
+                mDir.norm(); this.dir = mDir.clone();
+                let spd = this.getSpeed();
+                let nX = this.pos.x + mDir.x * spd, nY = this.pos.y + mDir.y * spd;
+                if (!map.checkCollision(new Vector2(nX, this.pos.y), 16)) this.pos.x = nX;
+                if (!map.checkCollision(new Vector2(this.pos.x, nY), 16)) this.pos.y = nY;
+            }
+        }
+    }
+    takeDamage(amount, match) {
+        if (this.isDowned) return;
+        this.hp -= amount;
+        if (this.hp <= 0) { this.hp = 0; this.isDowned = true; match.addAlert(`${this.name} caiu!`); }
+        else { match.addAlert(`${this.name} levou dano!`); }
+    }
+}
+
+class MatchManager {
+    constructor(playerRole, selectedChar) {
+        this.map = new MapData(); this.agents = []; this.alerts = []; this.timeRemaining = Config.matchDuration;
+        this.player = null; this.playerRole = playerRole; this.escapedCount = 0; this.particles = [];
+        this.initMatch(selectedChar);
+    }
+    initMatch(selectedChar) {
+        let sSp = this.map.rooms[0] ? new Vector2(this.map.rooms[0].x*64+32, this.map.rooms[0].y*64+32) : new Vector2(200, 200);
+        let hSp = this.map.rooms[this.map.rooms.length-1] ? new Vector2(this.map.rooms[this.map.rooms.length-1].x*64+32, this.map.rooms[this.map.rooms.length-1].y*64+32) : new Vector2(2000, 2000);
+        if (this.playerRole === 'surv') {
+            this.player = new Agent(0, selectedChar, 'surv', false, sSp); this.agents.push(this.player);
+            let sNames = ['Aria', 'Beck', 'Clara'];
+            for(let i=1; i<=7; i++) this.agents.push(new Agent(i, sNames[i % sNames.length], 'surv', true, sSp));
+            this.agents.push(new Agent(8, Object.keys(Characters).find(k => Characters[k].role === 'hunt'), 'hunt', true, hSp));
+        } else {
+            this.player = new Agent(0, selectedChar, 'hunt', false, hSp);
+            let sNames = ['Aria', 'Beck', 'Clara'];
+            for(let i=1; i<=8; i++) this.agents.push(new Agent(i, sNames[i % sNames.length], 'surv', true, sSp));
+            this.agents.push(this.player);
+        }
+    }
+    addAlert(msg) {
+        this.alerts.push({ text: msg, time: 3 });
+        let log = document.getElementById('alert-log');
+        if (log) {
+            let d = document.createElement('div'); d.className = 'alert-msg'; d.innerText = msg; log.appendChild(d);
+            setTimeout(() => d.remove(), 3000);
+        }
+    }
+    isGateOpen() { return this.map.generators.filter(g => g.done).length >= 4; }
+    escapeSurvivor(agent) {
+        if (agent.isBot) {
+            this.escapedCount++; this.addAlert(`${agent.name} escapou!`);
+            let idx = this.agents.indexOf(agent); if(idx > -1) this.agents.splice(idx, 1);
+        } else { endGame(true, "Você escapou com sucesso!"); }
+    }
+    update() {
+        this.timeRemaining -= 1/60;
+        if (this.timeRemaining <= 0) { endGame(this.playerRole === 'hunt', "Fim do tempo limite!"); return; }
+        this.agents.forEach(a => a.update(this.map, this));
+        if (this.agents.filter(a => a.type === 'surv').length === 0) { endGame(this.playerRole === 'hunt', "Todos os sobreviventes eliminados."); return; }
+        if (!this.player.isBot && this.player.type === 'surv') {
+            this.agents.forEach(a => {
+                if (a !== this.player && a.isDowned && this.player.pos.dist(a.pos) < 50) {
+                    a.hp += (this.player.name === 'Clara' ? 0.4 : 0.2);
+                    if (a.hp >= a.maxHp) { a.hp = a.maxHp; a.isDowned = false; this.addAlert(`${a.name} foi curado.`); }
+                }
+            });
+        }
+        if (Math.random() < 0.2) {
+            this.particles.push({
+                x: this.player.pos.x + (Math.random() - 0.5) * Config.canvasWidth * 1.5,
+                y: this.player.pos.y + (Math.random() - 0.5) * Config.canvasHeight * 1.5,
+                vx: -1 + Math.random(), vy: 1 + Math.random(), life: 100
+            });
+        }
+        this.particles.forEach((p, i) => { p.x += p.vx; p.y += p.vy; p.life--; if(p.life <= 0) this.particles.splice(i, 1); });
+    }
+    movePlayer(dx, dy) {
+        if (this.player.isDowned) return;
+        let dir = new Vector2(dx, dy);
+        if (dir.len() > 0) {
+            dir.norm(); this.player.dir = dir.clone();
+            let spd = this.player.getSpeed();
+            let nX = this.player.pos.x + dir.x * spd, nY = this.player.pos.y + dir.y * spd;
+            if (!this.map.checkCollision(new Vector2(nX, this.player.pos.y), 16)) this.player.pos.x = nX;
+            if (!this.map.checkCollision(new Vector2(this.player.pos.x, nY), 16)) this.player.pos.y = nY;
+            if(Math.random() < 0.1) AudioSynth.play(this.player.isRunning ? 'run' : 'step');
+        }
+    }
+    playerInteract() {
+        let hid = this.map.hidingSpots.find(h => h.dist(this.player.pos) < 50);
+        if (hid) { this.player.isHidden = !this.player.isHidden; this.addAlert(this.player.isHidden ? "Você se escondeu." : "Você saiu do esconderijo."); return; }
+        let gen = this.map.generators.find(g => g.pos.dist(this.player.pos) < 60);
+        if (gen && !gen.done && this.player.type === 'surv') {
+            gen.progress += 2.0 * (this.player.name === 'Beck' ? 1.35 : 1.0); AudioSynth.play('mach');
+            if (gen.progress >= 100) { gen.done = true; this.addAlert("Gerador completo!"); }
+            let hunt = this.agents.find(a => a.type === 'hunt');
+            if(hunt && hunt.isBot) hunt.soundAlertPos = gen.pos.clone();
+            return;
+        }
+        if (this.player.type === 'hunt') {
+            AudioSynth.play('hit');
+            this.agents.forEach(a => { if (a.type === 'surv' && this.player.pos.dist(a.pos) < 60) a.takeDamage(45, this); });
+        }
+        if (this.player.type === 'surv' && this.isGateOpen() && this.player.pos.dist(this.map.escapeGate) < 70) endGame(true, "Você escapou!");
+    }
+    usePlayerSkill() {
+        if (this.player.skillCooldown > 0) return;
+        this.player.skillCooldown = Characters[this.player.name].cooldown; this.player.skillActiveTimer = 4;
+        this.addAlert("Habilidade especial!");
+        if (this.player.name === 'Clara') this.player.hp = Math.min(this.player.maxHp, this.player.hp + 30);
+    }
+}
+const Renderer = {
+    canvas: null, ctx: null,
+    init() {
+        this.canvas = document.getElementById('gameCanvas'); this.ctx = this.canvas.getContext('2d');
+        this.resize(); window.addEventListener('resize', () => this.resize());
+    },
+    resize() {
+        let w = window.innerWidth, h = window.innerHeight, aspect = Config.canvasWidth / Config.canvasHeight;
+        if (w / h > aspect) { this.canvas.height = h; this.canvas.width = h * aspect; }
+        else { this.canvas.width = w; this.canvas.height = w / aspect; }
+    },
+    draw(match) {
+        let ctx = this.ctx, scale = this.canvas.width / Config.canvasWidth;
+        ctx.save(); ctx.scale(scale, scale);
+        ctx.fillStyle = '#0a0a0c'; ctx.fillRect(0, 0, Config.canvasWidth, Config.canvasHeight);
+        ctx.translate(-(match.player.pos.x - Config.canvasWidth / 2), -(match.player.pos.y - Config.canvasHeight / 2));
+
+        let ts = Config.tileSize;
+        for (let y = 0; y < Config.mapTilesY; y++) {
+            for (let x = 0; x < Config.mapTilesX; x++) {
+                if (match.map.getTile(x, y) === 1) { ctx.fillStyle = '#22222b'; ctx.fillRect(x*ts, y*ts, ts, ts); }
+                else { ctx.fillStyle = '#141417'; ctx.fillRect(x*ts, y*ts, ts, ts); }
+            }
+        }
+        match.map.hidingSpots.forEach(h => { ctx.fillStyle = '#5c4033'; ctx.fillRect(h.x-15, h.y-15, 30, 30); });
+        match.map.generators.forEach(g => {
+            ctx.fillStyle = g.done ? '#33cc33' : '#cc3333'; ctx.fillRect(g.pos.x-20, g.pos.y-20, 40, 40);
+            if(!g.done && g.progress > 0) {
+                ctx.fillStyle = '#555'; ctx.fillRect(g.pos.x-20, g.pos.y-30, 40, 6);
+                ctx.fillStyle = '#3399ff'; ctx.fillRect(g.pos.x-20, g.pos.y-30, (g.progress/100)*40, 6);
+            }
+        });
+        ctx.fillStyle = match.isGateOpen() ? '#00ff00' : '#444'; ctx.fillRect(match.map.escapeGate.x-50, match.map.escapeGate.y-10, 100, 20);
+
+        match.agents.forEach(a => {
+            if (a.isHidden) return;
+            ctx.save(); ctx.translate(a.pos.x, a.pos.y);
+            ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI*2);
+            ctx.fillStyle = a.type === 'hunt' ? '#ff3333' : (a.isDowned ? '#e67e22' : '#3399ff');
+            ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+            ctx.fillStyle = '#fff'; ctx.font = '11px Arial'; ctx.textAlign = 'center'; ctx.fillText(a.name, 0, -24);
+            ctx.fillStyle = '#555'; ctx.fillRect(-15, -20, 30, 4);
+            ctx.fillStyle = '#ff3333'; ctx.fillRect(-15, -20, (a.hp/a.maxHp)*30, 4);
+            ctx.restore();
+        });
+        match.particles.forEach(p => { ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(p.x, p.y, 2, 8); });
+        ctx.restore();
+        
+        let grd = ctx.createRadialGradient(this.canvas.width/2, this.canvas.height/2, 50, this.canvas.width/2, this.canvas.height/2, match.player.type === 'hunt' ? 380 : 220);
+        grd.addColorStop(0, 'rgba(0,0,0,0)'); grd.addColorStop(1, 'rgba(0,0,0,0.95)');
+        ctx.fillStyle = grd; ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+};
+
+let currentMatch = null, keys = {};
+window.addEventListener('keydown', e => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key.toLowerCase() === 'e' && currentMatch) currentMatch.playerInteract();
+    if (e.key.toLowerCase() === 'q' && currentMatch) currentMatch.usePlayerSkill();
+});
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+let touchStart = new Vector2(), touchMove = new Vector2(), isTouching = false;
+document.getElementById('touch-joy').addEventListener('touchstart', e => { touchStart.set(e.touches[0].clientX, e.touches[0].clientY); isTouching = true; });
+document.getElementById('touch-joy').addEventListener('touchmove', e => {
+    if (!isTouching) return;
+    touchMove.set(e.touches[0].clientX, e.touches[0].clientY);
+    let knob = document.getElementById('touch-knob');
+    let dx = touchMove.x - touchStart.x, dy = touchMove.y - touchStart.y;
+    let dist = Math.min(30, Math.sqrt(dx*dx + dy*dy)), angle = Math.atan2(dy, dx);
+    knob.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
+    if (currentMatch) currentMatch.movePlayer(Math.cos(angle), Math.sin(angle));
+});
+document.getElementById('touch-joy').addEventListener('touchend', () => { isTouching = false; document.getElementById('touch-knob').style.transform = 'translate(0px, 0px)'; });
+
+document.getElementById('btn-run').addEventListener('touchstart', () => { if(currentMatch) currentMatch.player.isRunning = !currentMatch.player.isRunning; });
+document.getElementById('btn-crouch').addEventListener('touchstart', () => { if(currentMatch) currentMatch.player.isCrouching = !currentMatch.player.isCrouching; });
+document.getElementById('btn-interact').addEventListener('touchstart', () => { if(currentMatch) currentMatch.playerInteract(); });
+document.getElementById('btn-skill').addEventListener('touchstart', () => { if(currentMatch) currentMatch.usePlayerSkill(); });
+
+function gameLoop() {
+    if (!currentMatch) return;
+    let dx = 0, dy = 0;
+    if (keys['w'] || keys['arrowup']) dy = -1;
+    if (keys['s'] || keys['arrowdown']) dy = 1;
+    if (keys['a'] || keys['arrowleft']) dx = -1;
+    if (keys['d'] || keys['arrowright']) dx = 1;
+    currentMatch.player.isRunning = keys['shift'];
+    currentMatch.player.isCrouching = keys['c'];
+    if (dx !== 0 || dy !== 0) currentMatch.movePlayer(dx, dy);
+    currentMatch.update(); Renderer.draw(currentMatch); updateHUD();
+    requestAnimationFrame(gameLoop);
+}
+
+function updateHUD() {
+    if (!currentMatch) return;
+    let gDone = currentMatch.map.generators.filter(g => g.done).length;
+    let alive = currentMatch.agents.filter(a => a.type === 'surv').length;
+    document.getElementById('hud-match-info').innerText = `MÁQUINAS: ${gDone}/4 | ALVOS VIVOS: ${alive}`;
+    let m = Math.floor(currentMatch.timeRemaining / 60), s = Math.floor(currentMatch.timeRemaining % 60);
+    document.getElementById('hud-timer').innerText = `TEMPO: ${(m<10?'0':'')+m}:${(s<10?'0':'')+s}`;
+    document.getElementById('hp-fill').style.width = `${(currentMatch.player.hp / currentMatch.player.maxHp)*100}%`;
+    document.getElementById('stamina-fill').style.width = `${currentMatch.player.stamina}%`;
+    let cdPerc = currentMatch.player.skillCooldown > 0 ? (currentMatch.player.skillCooldown / Characters[currentMatch.player.name].cooldown)*100 : 0;
+    document.getElementById('ability-fill').style.width = `${100 - cdPerc}%`;
+}
+
+function showScreen(id) {
+    document.querySelectorAll('.ui-screen').forEach(s => s.classList.add('hidden'));
+    document.getElementById('hud').classList.add('hidden');
+    if(id === 'hud') document.getElementById('hud').classList.remove('hidden');
+    else document.getElementById(id).classList.remove('hidden');
+}
+
+function initMenuData() {
+    document.getElementById('menu-coins').innerText = Profile.coins;
+    document.getElementById('menu-level').innerText = Profile.level;
+    document.getElementById('menu-xp').innerText = Profile.xp;
+    document.getElementById('shop-coins').innerText = Profile.coins;
+    document.getElementById('st-matches').innerText = Profile.stats.matches;
+    document.getElementById('st-wins').innerText = Profile.stats.wins;
+    document.getElementById('st-escapes').innerText = Profile.stats.escapes;
+    document.getElementById('st-kills').innerText = Profile.stats.kills;
+
+    let sContainer = document.getElementById('shop-items-container'); sContainer.innerHTML = '';
+    Object.keys(Characters).forEach(key => {
+        let c = Characters[key], unlocked = Profile.unlocked.includes(key), selected = (Profile.selectedSurv === key || Profile.selectedHunt === key);
+        let box = document.createElement('div'); box.className = 'shop-item';
+        box.innerHTML = `
+            <div>
+                <strong>${c.name}</strong>
+                <p style="font-size:0.8rem; color:#aaa; margin:5px 0;">${c.lore}</p>
+                <small>Habilidade: ${c.special}</small>
+            </div>
+            <button class="btn btn-sec" style="font-size:0.85rem; padding:6px;" onclick="handleShopClick('${key}')">
+                ${unlocked ? (selected ? 'SELECIONADO' : 'SELECIONAR') : `BLOQUEADO (${c.cost} M)`}
+            </button>
+        `;
+        sContainer.appendChild(box);
+    });
+}
+
+function handleShopClick(key) {
+    AudioSynth.play('click');
+    let c = Characters[key];
+    if (Profile.unlocked.includes(key)) {
+        if(c.role === 'surv') Profile.selectedSurv = key; else Profile.selectedHunt = key;
+    } else {
+        if (Profile.coins >= c.cost) { Profile.coins -= c.cost; Profile.unlocked.push(key); }
+        else { alert("Moedas insuficientes!"); }
+    }
+    saveProfile(); initMenuData();
+}
+
+function startGame(role) {
+    AudioSynth.play('click');
+    let sel = (role === 'surv') ? Profile.selectedSurv : Profile.selectedHunt;
+    currentMatch = new MatchManager(role, sel);
+    document.getElementById('hud-role').innerText = role === 'surv' ? 'SOBREVIVENTE' : 'CAÇADOR';
+    document.getElementById('hud-role').style.color = role === 'surv' ? '#3399ff' : '#ff3333';
+    showScreen('hud'); requestAnimationFrame(gameLoop);
+}
+
+function endGame(isWin, reason) {
+    currentMatch = null; Profile.stats.matches++;
+    let eXp = 40, eCoins = 15;
+    if (isWin) { Profile.stats.wins++; eXp += 60; eCoins += 25; AudioSynth.play('win'); document.getElementById('end-title').innerText = "VITÓRIA"; document.getElementById('end-title').style.color = "#33cc33"; }
+    else { AudioSynth.play('lose'); document.getElementById('end-title').innerText = "DERROTA"; document.getElementById('end-title').style.color = "#ff3333"; }
+    Profile.xp += eXp; Profile.coins += eCoins;
+    if (Profile.xp >= Profile.level * 200) { Profile.xp -= Profile.level * 200; Profile.level++; }
+    saveProfile();
+    document.getElementById('end-reason').innerText = reason; document.getElementById('end-xp').innerText = eXp; document.getElementById('end-coins').innerText = eCoins;
+    showScreen('menu-end');
+}
+
+document.getElementById('btn-play-surv').addEventListener('click', () => startGame('surv'));
+document.getElementById('btn-play-hunt').addEventListener('click', () => startGame('hunt'));
+document.getElementById('btn-open-shop').addEventListener('click', () => { AudioSynth.play('click'); showScreen('menu-shop'); });
+document.getElementById('btn-close-shop').addEventListener('click', () => { AudioSynth.play('click'); showScreen('menu-main'); });
+document.getElementById('btn-open-stats').addEventListener('click', () => { AudioSynth.play('click'); showScreen('menu-stats'); });
+document.getElementById('btn-close-stats').addEventListener('click', () => { AudioSynth.play('click'); showScreen('menu-main'); });
+document.getElementById('btn-end-return').addEventListener('click', () => { AudioSynth.play('click'); initMenuData(); showScreen('menu-main'); });
+
+window.addEventListener('click', () => AudioSynth.init(), { once: true });
+window.addEventListener('touchstart', () => AudioSynth.init(), { once: true });
+
+Renderer.init(); initMenuData(); showScreen('menu-main');
+</script>
+</body>
+</html>
